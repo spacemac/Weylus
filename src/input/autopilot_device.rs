@@ -151,6 +151,10 @@ impl InputDevice for AutoPilotDevice {
             Some(key) => autopilot::key::toggle(&Code(key), state, &flags, 0),
             None => {
                 for c in event.key.chars() {
+                    // autopilot's Windows character path panics (transmute_copy into the larger INPUT union)
+                    #[cfg(target_os = "windows")]
+                    win_type_char(c, state, event.ctrl || event.alt || event.meta, &flags);
+                    #[cfg(not(target_os = "windows"))]
                     autopilot::key::toggle(&Character(c), state, &flags, 0);
                 }
             }
@@ -163,5 +167,55 @@ impl InputDevice for AutoPilotDevice {
 
     fn device_type(&self) -> InputDeviceType {
         InputDeviceType::AutoPilotDevice
+    }
+}
+
+/// Types one character on Windows. With Ctrl/Alt/Win held it presses the matching virtual key so
+/// shortcuts like Ctrl+C work; otherwise it sends the character as Unicode (any layout, any symbol).
+#[cfg(target_os = "windows")]
+fn win_type_char(c: char, down: bool, shortcut: bool, flags: &[autopilot::key::Flag]) {
+    use autopilot::key::Flag;
+    use winapi::um::winuser::{
+        keybd_event, SendInput, VkKeyScanW, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP,
+        KEYEVENTF_UNICODE, VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT,
+    };
+    let up = if down { 0 } else { KEYEVENTF_KEYUP };
+    let mut buf = [0u16; 2];
+    let words = c.encode_utf16(&mut buf);
+    unsafe {
+        if shortcut && words.len() == 1 && (VkKeyScanW(words[0]) as u16 & 0xff) != 0xff {
+            let mods: Vec<u8> = flags
+                .iter()
+                .map(|f| match f {
+                    Flag::Control => VK_CONTROL as u8,
+                    Flag::Alt => VK_MENU as u8,
+                    Flag::Meta => VK_LWIN as u8,
+                    Flag::Shift => VK_SHIFT as u8,
+                    _ => 0,
+                })
+                .filter(|v| *v != 0)
+                .collect();
+            let vk = (VkKeyScanW(words[0]) as u16 & 0xff) as u8;
+            if down {
+                for m in &mods {
+                    keybd_event(*m, 0, 0, 0);
+                }
+                keybd_event(vk, 0, 0, 0);
+            } else {
+                keybd_event(vk, 0, KEYEVENTF_KEYUP, 0);
+                for m in mods.iter().rev() {
+                    keybd_event(*m, 0, KEYEVENTF_KEYUP, 0);
+                }
+            }
+            return;
+        }
+        for w in words.iter() {
+            let mut input: INPUT = std::mem::zeroed();
+            input.type_ = INPUT_KEYBOARD;
+            let ki = input.u.ki_mut();
+            ki.wScan = *w;
+            ki.dwFlags = KEYEVENTF_UNICODE | up;
+            SendInput(1, &mut input, std::mem::size_of::<INPUT>() as i32);
+        }
     }
 }
