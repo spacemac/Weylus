@@ -190,7 +190,15 @@ impl Recorder for GdiRecorder {
                 };
                 let mut ci: CURSORINFO = std::mem::zeroed();
                 ci.cbSize = std::mem::size_of::<CURSORINFO>() as u32;
-                if ok != 0 && GetCursorInfo(&mut ci) != 0 && ci.flags & CURSOR_SHOWING != 0 {
+                // Windows hides ("suppresses", flags 2) the cursor after pen input, which is all the iPad
+                // sends, so draw it while showing or suppressed; fall back to the arrow.
+                if ok != 0 && GetCursorInfo(&mut ci) != 0 && ci.flags & (CURSOR_SHOWING | 2) != 0 {
+                    if ci.hCursor.is_null() {
+                        ci.hCursor = winapi::um::winuser::LoadCursorW(
+                            std::ptr::null_mut(),
+                            winapi::um::winuser::IDC_ARROW,
+                        );
+                    }
                     let mut ii: ICONINFO = std::mem::zeroed();
                     if GetIconInfo(ci.hCursor, &mut ii) != 0 {
                         DrawIconEx(
