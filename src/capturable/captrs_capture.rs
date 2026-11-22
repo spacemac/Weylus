@@ -164,12 +164,12 @@ impl Drop for GdiRecorder {
 impl Recorder for GdiRecorder {
     fn capture(&mut self) -> Result<crate::video::PixelProvider, Box<dyn Error>> {
         use winapi::um::wingdi::{BitBlt, GdiFlush, SRCCOPY};
-        use winapi::um::winuser::{
-            SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-        };
+        use winapi::um::winuser::SetThreadDpiAwarenessContext;
+        // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (missing from winapi 0.3)
+        let per_monitor_v2 = -4isize as winapi::shared::windef::DPI_AWARENESS_CONTEXT;
         unsafe {
             // DXGI rects are physical pixels; make GDI use them too, on this thread only.
-            let prev = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            let prev = SetThreadDpiAwarenessContext(per_monitor_v2);
             let ok = BitBlt(
                 self.mem_dc,
                 0,
