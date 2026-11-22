@@ -181,6 +181,38 @@ impl Recorder for GdiRecorder {
                 self.screen.top,
                 SRCCOPY,
             );
+            // GDI doesn't copy the mouse cursor; draw it in so the iPad shows where the pointer is.
+            {
+                use winapi::um::wingdi::DeleteObject;
+                use winapi::um::winuser::{
+                    DrawIconEx, GetCursorInfo, GetIconInfo, CURSORINFO, CURSOR_SHOWING, DI_NORMAL,
+                    ICONINFO,
+                };
+                let mut ci: CURSORINFO = std::mem::zeroed();
+                ci.cbSize = std::mem::size_of::<CURSORINFO>() as u32;
+                if ok != 0 && GetCursorInfo(&mut ci) != 0 && ci.flags & CURSOR_SHOWING != 0 {
+                    let mut ii: ICONINFO = std::mem::zeroed();
+                    if GetIconInfo(ci.hCursor, &mut ii) != 0 {
+                        DrawIconEx(
+                            self.mem_dc,
+                            ci.ptScreenPos.x - ii.xHotspot as i32 - self.screen.left,
+                            ci.ptScreenPos.y - ii.yHotspot as i32 - self.screen.top,
+                            ci.hCursor,
+                            0,
+                            0,
+                            0,
+                            std::ptr::null_mut(),
+                            DI_NORMAL,
+                        );
+                        if !ii.hbmMask.is_null() {
+                            DeleteObject(ii.hbmMask as _);
+                        }
+                        if !ii.hbmColor.is_null() {
+                            DeleteObject(ii.hbmColor as _);
+                        }
+                    }
+                }
+            }
             GdiFlush();
             if !prev.is_null() {
                 SetThreadDpiAwarenessContext(prev);
