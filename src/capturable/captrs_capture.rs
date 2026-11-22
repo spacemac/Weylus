@@ -185,7 +185,7 @@ impl Recorder for GdiRecorder {
             {
                 use winapi::um::wingdi::DeleteObject;
                 use winapi::um::winuser::{
-                    DrawIconEx, GetCursorInfo, GetIconInfo, CURSORINFO, CURSOR_SHOWING, DI_NORMAL,
+                    DrawIconEx, GetCursorInfo, GetIconInfo, CURSORINFO, CURSOR_SHOWING,
                     ICONINFO,
                 };
                 let mut ci: CURSORINFO = std::mem::zeroed();
@@ -202,7 +202,7 @@ impl Recorder for GdiRecorder {
                             0,
                             0,
                             std::ptr::null_mut(),
-                            DI_NORMAL,
+                            0x0003, // DI_NORMAL (missing from winapi 0.3)
                         );
                         if !ii.hbmMask.is_null() {
                             DeleteObject(ii.hbmMask as _);
